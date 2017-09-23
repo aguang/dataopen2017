@@ -1,0 +1,71 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Average expression
+Median
+Standard deviation
+
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r, avg_exp}
+library(dplyr)
+#tcga = read.table("data/tcga.csv", sep=",", header=TRUE)
+#save(tcga, file="data/tcga.Rdata")
+#gtex = read.table("data/gtex_sample_expression.csv", sep=",", header=TRUE)
+#matching_geneid = filter(gtex, gene_id %in% unlist(select(tcga, gene_id)))
+#gtex_tissue = read.table("data/gtex_tissue.csv", sep=",", header=TRUE)
+#colnames(gtex_tissue)[2] = "tissue"
+
+#gtex_by_tissue = right_join(gtex, gtex_tissue, by="tissue")
+#save(gtex_by_tissue, file="data/gtex_by_tissue.Rdata")
+
+#filtered_gtex = filter(gtex_by_tissue, organ %in% unlist(select(tcga, organ)))
+#save(filtered_gtex, file="data/filtered_gtex.Rdata")
+load(file="data/filtered_gtex.Rdata")
+
+#filtered_tcga = filter(tcga, organ %in% unlist(select(filtered_gtex, organ)))
+#save(filtered_tcga, file="data/filtered_tcga.Rdata")
+load(file="data/filtered_tcga.Rdata")
+
+# normalize by tissue expression
+ normalit<-function(m){
+   (m - min(m))/(max(m)-min(m))
+ }
+ 
+norm_tcga = filtered_tcga %>% group_by(organ) %>% mutate(norm_exp_tcga = normalit(fpkm_expression))
+norm_gtex = filtered_gtex %>% group_by(organ) %>% mutate(norm_exp_gtex = normalit(rpkm_expression))
+
+#norm_tcga %>% summarise(mean(norm_exp))
+#norm_gtex %>% summarise(mean(norm_gtex))
+save(norm_tcga, "")
+
+#full_table = inner_join(select(norm_tcga, gene_id, organ, norm_exp_tcga), select(norm_gtex, gene_id, organ, norm_exp_gtex), by=c("gene_id", "organ"))
+#save(full_table, file="data/full_table.Rdata")
+
+Database = rep(NA, 14)
+Database[1:7] = "TCGA (Individuals with Cancer)"
+Database[8:14] = "GTex (Healthy Individuals)"
+colnames(norm_tcga)[5] = "norm_exp"
+colnames(norm_gtex)[5] = "blah"
+colnames(norm_gtex)[9] = "norm_exp"
+
+mv_tcga = norm_tcga %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
+mv_gtex = norm_gtex %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
+
+joined = data.frame(rbind(mv_tcga, mv_gtex), Database)
+
+ggplot(joined, aes(x=factor(organ), y=mean.norm_exp., group=Database, fill=Database)) + geom_bar(stat="identity", position=position_dodge()) + ggtitle("Mean Normalized Expression Across Organs\nFound in Patients with Cancer and Healthy Individuals") + xlab("Organ") + ylab("Mean Normalized Expression")
+
+fpkm_expression = group_by(tcga, organ) %>% summarise(mean(fpkm_expression))
+rpkm_expression = right_join(gtex, gtex_tissue, by="tissue") %>% group_by(organ) %>% summarise(mean(rpkm_expression))
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
