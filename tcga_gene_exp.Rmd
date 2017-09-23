@@ -3,17 +3,16 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-Average expression
-Median
-Standard deviation
-
-
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
-
-```{r, avg_exp}
+```{r, setup, include=FALSE}
 library(dplyr)
+library(ggplot2)
+```
+
+# Figures for Report
+
+This notebook contains the code to reproduce the figures used in the report. Note that many of the objects have been saved as Rdata objects to allow easy running of the notebook. You can reprocess the objects if you'd like with the data from the competition.
+
+```{r, avg_exp, eval=FALSE}
 #tcga = read.table("data/tcga.csv", sep=",", header=TRUE)
 #save(tcga, file="data/tcga.Rdata")
 #gtex = read.table("data/gtex_sample_expression.csv", sep=",", header=TRUE)
@@ -37,22 +36,27 @@ load(file="data/filtered_tcga.Rdata")
    (m - min(m))/(max(m)-min(m))
  }
  
-norm_tcga = filtered_tcga %>% group_by(organ) %>% mutate(norm_exp_tcga = normalit(fpkm_expression))
-norm_gtex = filtered_gtex %>% group_by(organ) %>% mutate(norm_exp_gtex = normalit(rpkm_expression))
+norm_tcga = filtered_tcga %>% mutate(norm_exp = normalit(fpkm_expression))
+norm_gtex = filtered_gtex %>% mutate(norm_exp = normalit(rpkm_expression))
 
 #norm_tcga %>% summarise(mean(norm_exp))
 #norm_gtex %>% summarise(mean(norm_gtex))
-save(norm_tcga, "")
+#save(norm_tcga, "")
 
-#full_table = inner_join(select(norm_tcga, gene_id, organ, norm_exp_tcga), select(norm_gtex, gene_id, organ, norm_exp_gtex), by=c("gene_id", "organ"))
+#full_table = rbind(select(norm_tcga, gene_id, organ, norm_exp), select(norm_gtex, gene_id, organ, norm_exp))
+load(file="data/full_table.Rdata")
+#tcga_val = rep(NA, 13642009)
+#tcga_val[1:1957009] = "TCGA"
+#tcga_val[1957010:13642009] = "GTex"
+#full_table$Database = tcga_val
 #save(full_table, file="data/full_table.Rdata")
 
 Database = rep(NA, 14)
 Database[1:7] = "TCGA (Individuals with Cancer)"
 Database[8:14] = "GTex (Healthy Individuals)"
-colnames(norm_tcga)[5] = "norm_exp"
-colnames(norm_gtex)[5] = "blah"
-colnames(norm_gtex)[9] = "norm_exp"
+#colnames(norm_tcga)[5] = "norm_exp"
+#colnames(norm_gtex)[5] = "blah"
+#colnames(norm_gtex)[9] = "norm_exp"
 
 mv_tcga = norm_tcga %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
 mv_gtex = norm_gtex %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
@@ -69,3 +73,47 @@ rpkm_expression = right_join(gtex, gtex_tissue, by="tissue") %>% group_by(organ)
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+```{r, full_table2}
+norm_tcga = filtered_tcga %>% group_by(gene_id, organ) %>% mutate(norm_exp = normalit(fpkm_expression))
+norm_gtex = filtered_gtex %>% group_by(gene_id, organ) %>% mutate(norm_exp = normalit(rpkm_expression))
+
+filt_tcga2 = select(norm_tcga2, gene_id, organ, norm_exp) %>% filter(norm_exp < 'NaN')
+filt_gtex2 = select(norm_gtex2, gene_id, organ, norm_exp) %>% filter(norm_exp < 'NaN')
+tcga_val = rep(NA, nrow(filt_tcga2) + nrow(filt_gtex2))
+tcga_val[1:nrow(filt_tcga2)] = "TCGA"
+tcga_val[nrow(filt_tcga2)+1:nrow(filt_gtex2)] = "GTex"
+full_table2 = data.frame(rbind(filt_tcga2, filt_gtex2), tcga_val)
+
+mv_tcga2 = filt_tcga2 %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
+mv_gtex2 = filt_gtex2 %>% group_by(organ) %>% summarise(mean(norm_exp), var(norm_exp))
+
+joined2 = data.frame(rbind(mv_tcga2, mv_gtex2), Database)
+
+p2 = ggplot(joined2, aes(x=factor(organ), y=mean.norm_exp., group=Database, fill=Database)) + geom_bar(stat="identity", position=position_dodge()) + ggtitle("Mean Expression Across Organs\nFound in Patients with Cancer and Healthy Individuals") + xlab("Organ") + ylab("Mean Expression")
+```
+
+```{r, classification}
+
+classification = read.table("data/classification.Rdata")
+classification$is_cancer = as.numeric(classification$is_cancer)
+colnames(classification)[5] = "Database"
+classification$Database = as.factor(classification$Database)
+ggplot(classification, aes(x=exp, group=Database, color=Database)) + geom_density() + scale_x_log10() + ggtitle("Density Plot of Standardized Expression Levels on Log Scale") + xlab("Expression Levels (Log Scale)") + ylab("Density") + scale_color_discrete(name="Database", breaks=c("1", "0"), labels=c("TCGA (Cancer Patients)", "GTex (Healthy Patients)"))
+```
+
+```{r,  strong.txt}
+candidates = read.csv("strong.csv")
+colnames(candidates) = c("Rank", "gene_id", "organ")
+candidate_exp = left_join(candidates, classification)
+candidate_exp %>% group_by(gene_id, organ) %>% do({p <- ggplot(., aes(x=exp, group=Database, color=Database)) + geom_density()
+ggsave(p, filename=paste0("strong","_",unique(.$gene_id),"_",unique(.$organ),".pdf"))})
+```
+
+```{r, candidatesv2}
+exp65 = filter(classification, exp>65)
+exp65_class = left_join(select(exp65, gene_id, organ), classification)
+#exp65_class %>% group_by(gene_id, organ)
+exp65_class %>% group_by(gene_id, organ) %>% do({p <- ggplot(., aes(x=exp, group=Database, color=Database)) + geom_density()
+ggsave(p, filename=paste0("cutoff","_",unique(.$gene_id),"_",unique(.$organ),".pdf"))})
+```
